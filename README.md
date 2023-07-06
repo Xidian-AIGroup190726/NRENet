@@ -1,3 +1,3 @@
 # NRENet
-neighborhood removal-and-emphasis network (NRE-Net)
+
 we propose a network called neighborhood removal-and-emphasis network (NRE-Net), including an object neighborhood removal (ONR) strategy and a neighborhood feature emphasis (NFE) module. Among them, the ONR strategy directly removes the complex background information around the ship before feature extraction, only retaining effective contextual neighborhoods conducive to ship detection and avoiding the interference of complex background information on the network. The NFE module is based on ONR to extract features and form a weight map of small-sized ships or complex images. This module can adaptively recognize the detection neighborhood of each ship and highlight the detection ship on the feature map.
