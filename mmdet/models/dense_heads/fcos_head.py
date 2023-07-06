@@ -1,17 +1,24 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 
 import torch
 import torch.nn as nn
 from mmcv.cnn import Scale
 from mmcv.runner import force_fp32
-
+import torch.nn.functional as F
+import math
+from PIL import Image
 from mmdet.core import multi_apply, reduce_mean
 from ..builder import HEADS, build_loss
 from .anchor_free_head import AnchorFreeHead
+import numpy as np
+import random
+from skimage.metrics import structural_similarity as compare_ssim
+from torchmetrics import StructuralSimilarityIndexMeasure
+import matplotlib.pyplot as plt 
 
 INF = 1e8
-
+global weights
+weights=[]
 
 @HEADS.register_module()
 class FCOSHead(AnchorFreeHead):
@@ -93,6 +100,50 @@ class FCOSHead(AnchorFreeHead):
         self.center_sample_radius = center_sample_radius
         self.norm_on_bbox = norm_on_bbox
         self.centerness_on_reg = centerness_on_reg
+
+        self.dimension = 1  
+        self.time = 10  
+        self.size = 62  
+        self.bound = []  
+        self.v_low = -2
+        self.v_high = 2
+        self.x = np.zeros((self.size, self.dimension))  
+        self.v = np.zeros((self.size, self.dimension))  
+        self.p_best = np.zeros((self.size, self.dimension))  
+        self.g_best = np.zeros((1, self.dimension))[0]
+        # self.loss_features = loss_features
+        global weights
+        weights=[]
+        global iters
+        iters = []
+        global ms
+        ms = []
+        ms.append(48)
+        global temp
+        temp=[]
+        temp.append(100000)
+        global r
+        r =[]
+        global r1
+        r1 = []
+        global loss_s
+        loss_s = []
+        global final_best
+        final_best = []
+        final_best.append(64)
+        global LOSS
+        LOSS=[]
+        global zz
+        zz=[]
+        global epoch
+        epoch = []
+        epoch.append(0)
+        global x_iter
+        global ap
+        ap=[]
+        x_iter=[]
+        x_iter.append(48)
+        savepath = r'/media/ExtDisk/yxt/ture map/'
         super().__init__(
             num_classes,
             in_channels,
@@ -107,6 +158,7 @@ class FCOSHead(AnchorFreeHead):
         """Initialize layers of the head."""
         super()._init_layers()
         self.conv_centerness = nn.Conv2d(self.feat_channels, 1, 3, padding=1)
+        self.conv_features = nn.Conv2d(self.feat_channels, 1, 3, padding=1)
         self.scales = nn.ModuleList([Scale(1.0) for _ in self.strides])
 
     def forward(self, feats):
@@ -127,6 +179,7 @@ class FCOSHead(AnchorFreeHead):
                 centernesses (list[Tensor]): centerness for each scale level, \
                     each is a 4D-tensor, the channel number is num_points * 1.
         """
+        #print(feats.shape)
         return multi_apply(self.forward_single, feats, self.scales,
                            self.strides)
 
@@ -145,7 +198,29 @@ class FCOSHead(AnchorFreeHead):
             tuple: scores for each class, bbox predictions and centerness \
                 predictions of input feature maps.
         """
+        # print("shape:",x.shape)#torch.Size([8, 256, 52, 64])
+        # print("done",(x.shape)[0])
+        #print("before:",len(weights))
+        if len(weights)>=5:
+            weights.clear()
+        if len(iters)%455 == 0 and len(iters)!=0 and len(ap)==0:
+          epoch.append(0)
+        ap.append(0)
+        if len(ap)>=5:
+          ap.clear()
+        #print("epoch:",len(epoch),len(iters),len(ap))
+        #print("x",x[0][255])
+        
+        if len(epoch)%2==0:# or len(epoch)>=51 and len(iters)%102!=0:
+          wmap = self.conv_features(x)
+          weight = torch.sigmoid(wmap)
+          weights.append(weight)
+          for i in range((x.shape)[0]):
+             x[i].data *=weight[i]
+        #print("weightss",weight[7])
+        #print("xg",x[0][255])
         cls_score, bbox_pred, cls_feat, reg_feat = super().forward_single(x)
+        # print(cls_feat.shape)
         if self.centerness_on_reg:
             centerness = self.conv_centerness(reg_feat)
         else:
@@ -197,15 +272,75 @@ class FCOSHead(AnchorFreeHead):
         """
         assert len(cls_scores) == len(bbox_preds) == len(centernesses)
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
+        #print(featmap_sizes)
         all_level_points = self.prior_generator.grid_priors(
             featmap_sizes,
             dtype=bbox_preds[0].dtype,
             device=bbox_preds[0].device)
+        
         labels, bbox_targets = self.get_targets(all_level_points, gt_bboxes,
                                                 gt_labels)
-
+        
+        img_shapes = []
+        for i in range(len(img_metas)):
+            img_shapes.append((img_metas[i])['img_shape'])
+        
+        name = []
+        for i in range(0,len(gt_bboxes)):
+            name.append(img_metas[i]['ori_filename'])
+        res = self.cal_res(name)# caculate shang
+        area_s = []
+        WH = []
+        for k in range(len(gt_bboxes)):
+            mian = []
+            wh=[]
+            
+            for h in range(len(gt_bboxes[k])):
+                wh.append(max(((gt_bboxes[k][h])[2]-(gt_bboxes[k][h])[0])/2,((gt_bboxes[k][h])[3]-(gt_bboxes[k][h])[1]))/2)
+                mian.append(((gt_bboxes[k][h])[2]-(gt_bboxes[k][h])[0])*((gt_bboxes[k][h])[3]-(gt_bboxes[k][h])[1]))
+            area_s.append(mian)
+            WH.append(wh)
+        rmin=[]
+        rmax=[]
+        for i in range(len(area_s)):
+            p=0
+            for j in range(len(area_s[i])):
+              if res[i]>=6 or area_s[i][j]<=(32*32):
+                  p=p+1
+            if p!=0:
+              index_min = area_s[i].index(min(area_s[i]))
+              index_max = area_s[i].index(max(area_s[i]))
+              rmin.append(WH[i][index_min])
+              rmax.append(WH[i][index_max])
+        rsumin=0
+        rsumax=0
+        for i in range(len(rmin)):
+            rsumin = rsumin+rmin[i]*3 #per image's min ship's max width
+            rsumax = rsumax+rmax[i]*3 #per image's max ship's max width
+        if len(rmin)!=0:
+          Rmin = rsumin/len(rmin)
+        else:
+            Rmin=0
+        if len(rmax)!=0:
+          Rmax = rsumax/len(rmax)
+        else:
+            Rmax=0
+        
+        low = [Rmin]
+        up = [Rmax]
+        self.bound.append(low)
+        self.bound.append(up)
+                 
+        iters.append(0)
+        if len(epoch)%2 == 0:# or len(epoch)>=51:
+          feature_target = self.feature_map_target(featmap_sizes, gt_bboxes, all_level_points, img_shapes,res)
+          print("weights:",(weights[3])[0])
+          print("target:",(feature_target[3])[0])
+          feature_loss = self.loss_features(weights, feature_target)
+          #print(feature_loss)
+        weights.clear()
         num_imgs = cls_scores[0].size(0)
-        # flatten cls_scores, bbox_preds and centerness
+        
         flatten_cls_scores = [
             cls_score.permute(0, 2, 3, 1).reshape(-1, self.cls_out_channels)
             for cls_score in cls_scores
@@ -231,8 +366,10 @@ class FCOSHead(AnchorFreeHead):
         bg_class_ind = self.num_classes
         pos_inds = ((flatten_labels >= 0)
                     & (flatten_labels < bg_class_ind)).nonzero().reshape(-1)
+
         num_pos = torch.tensor(
             len(pos_inds), dtype=torch.float, device=bbox_preds[0].device)
+        #print("pos:",pos_inds,num_pos)
         num_pos = max(reduce_mean(num_pos), 1.0)
         loss_cls = self.loss_cls(
             flatten_cls_scores, flatten_labels, avg_factor=num_pos)
@@ -262,10 +399,197 @@ class FCOSHead(AnchorFreeHead):
             loss_bbox = pos_bbox_preds.sum()
             loss_centerness = pos_centerness.sum()
 
-        return dict(
+        if len(epoch)%2 == 0:
+          loss_sum = 0.8*loss_cls + 0.8*loss_bbox + 0.2*feature_loss + 0.2*loss_centerness
+          loss_s.append(loss_sum)
+          #print("loss_sum:",loss_sum)
+          loss10q = []
+          loss10h = []
+          a = 10
+         
+          if (len(r)%a==0 or len(r)==0) and len(r)<2730:
+            if len(r)==0:
+              loss10q.append(loss_s[0])
+              loss10h.append(loss_s[0])
+            elif len(r)>a:
+              for i in range(a):
+                loss10h.append(loss_s[-i-1])
+                loss10q.append(loss_s[-i-a])
+            else:
+              for i in range(a):
+                loss10h.append(loss_s[-i-1])
+              loss10q.append(loss_s[0])
+            print("q:",min(loss10q))
+            print("h:",min(loss10h))
+            if len(r1)==0:
+              self.x[0][0] = random.uniform(self.bound[0][0], self.bound[1][0])
+              self.v[0][0] = random.uniform(self.v_low, self.v_high)
+              self.p_best[0] = self.x[0]  # 储存最优的个体
+              self.g_best = self.p_best[0]
+            
+            for gen in range(self.time):
+              self.update(self.size)
+            u=self.x[0][0]
+            x_iter.append(u)
+          
+            if len(r)==0 or len(r)==1:
+              (self.p_best[0])[0] = x_iter[-1]
+            elif len(r)>1:
+                if min(loss10q)>=min(loss10h):
+                    (self.p_best[0]) = x_iter[-2]
+                else:
+                    (self.p_best[0]) = x_iter[-3]
+            
+            LOSS.append([min(loss10h),ms[-1]])
+            ms.append(self.x[0][0])
+            
+            a=[]
+            for i in range(len(LOSS)):
+              a.append(LOSS[i][0])
+            index_min = a.index(min(a))
+            self.g_best = LOSS[index_min][1]
+            r1.append(0)
+          r.append(0)
+         
+        if len(r)==2730:
+          a=[]
+          for i in range(len(LOSS)):
+              a.append(LOSS[i][0])
+          index_min = a.index(min(a))
+          self.g_best = LOSS[index_min][1]
+          ms.append(self.g_best)
+        
+        if len(epoch)%2 == 0:
+            return dict(
+            loss_cls=loss_cls,
+            loss_bbox=loss_bbox,
+            loss_centerness=loss_centerness,
+            loss_features=feature_loss)
+        else:
+          return dict(
             loss_cls=loss_cls,
             loss_bbox=loss_bbox,
             loss_centerness=loss_centerness)
+
+    #def interval_confirmation(self):
+
+    def update(self, size):
+        c1 = 2.0  
+        c2 = 2.0
+        w = 0.8  
+        
+        for i in range(size):
+            
+            self.v[i] = w * self.v[i] + c1 * random.uniform(0, 1) * (
+                    self.p_best[i] - self.x[i]) + c2 * random.uniform(0, 1) * (self.g_best - self.x[i])
+            
+            for j in range(self.dimension):
+                if self.v[i][j] < self.v_low:
+                    self.v[i][j] = self.v_low
+                if self.v[i][j] > self.v_high:
+                    self.v[i][j] = self.v_high
+
+            self.x[i] = self.x[i] + self.v[i]
+            
+            for j in range(self.dimension):
+                if self.x[i][j] < self.bound[0][j]:
+                    self.x[i][j] = self.bound[0][j]
+                if self.x[i][j] > self.bound[1][j]:
+                    self.x[i][j] = self.bound[1][j]
+            
+        
+        
+    def draw_features(self,width, height, x, savename):
+      
+      fig = plt.figure(figsize=(16, 16))
+      fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.05, hspace=0.05)
+      for i in range(width * height):
+        plt.subplot(height, width, i + 1)
+        plt.axis('off')
+        img = x[0, i, :, :]
+        pmin = np.min(img)
+        pmax = np.max(img)
+        img = ((img - pmin) / (pmax - pmin + 0.000001)) * 255  
+        img = img.astype(np.uint8)  
+        img = cv2.applyColorMap(img, cv2.COLORMAP_JET)  
+        img = img[:, :, ::-1] 
+        #plt.imshow(img)
+        print("{}/{}".format(i, width * height))
+      fig.savefig(savename, dpi=100)
+      fig.clf()
+      plt.close()
+
+    def feature_map_target(self, featmap_sizes, gt_bboxes, all_level_points, img_shapes,res):
+        stride1 = [8,16,32, 64, 128]
+        feature_target = []
+        
+        for i in range(len(featmap_sizes)):
+            save_feature_weight = []
+            for j in range(len(gt_bboxes)):
+                p = -1
+                if res[j]>=6:
+                  weights = torch.zeros(featmap_sizes[i][0], featmap_sizes[i][1], dtype=torch.float32,
+                                      device=torch.device('cuda:1'))
+                  for k in range(weights.shape[0]):
+                      for h in range(weights.shape[1]):
+                         p = p + 1
+                         locations = (all_level_points[i])[p]
+                         sizes = (img_shapes[j][0], img_shapes[j][1])  
+                        #print("sizes:",sizes)
+                         xl_yl = locations - (stride1[i] / 2)
+                         xr_yr = locations + (stride1[i] / 2)
+                         box1 = [xl_yl[0], xl_yl[1], xr_yr[0], xr_yr[1]]
+                         for l in range(len(gt_bboxes[j])):
+                           box2 = (gt_bboxes[j])[l]
+                           m =ms[-1] 
+                           xl = box2[0]-m if (box2[0]-m)>=0 else 0
+                           yl = box2[1]-m if (box2[1]-m)>=0 else 0
+                           xr = box2[2]+m if (box2[2]+m)<=sizes[1]-1 else sizes[1]-1
+                           yr = box2[3]+m if (box2[3]+m)<=sizes[0]-1 else sizes[0]-1
+                           box22 = [xl,yl,xr,yr]
+                          #print("box22:",box22)
+                           if IOU(box1, box22) != 0:
+                             weights[k][h] += 1
+                         weights[k][h] = torch.sigmoid(weights[k][h])
+                else:
+                    weights = torch.ones(featmap_sizes[i][0], featmap_sizes[i][1], dtype=torch.float32,
+                                      device=torch.device('cuda:1')) 
+
+                save_feature_weight.append(weights)
+            feature_target.append(save_feature_weight)
+        #print(feature_target[0][7].shape,len(feature_target))
+        return feature_target
+
+    def cal_res(self,img_name):
+        res1 = []
+        #print(len(img_name),img_name[0])
+        for j in range(len(img_name)):
+          tmp = []
+          for i in range(256):
+              tmp.append(0)
+          val = 0
+          k = 0
+          res = 0
+          I1 = Image.open('/media/ExtDisk/yxt/HRSID/train_image/'+str(img_name[j]))
+          #I = Image.open('/media/ExtDisk/yxt/ssdd_coco-20221019/ssdd_coco/train1/train_image/'+str(img_name[j]))
+          I = I1.resize((400, 400))
+          greyIm=I.convert('L')
+          img=np.array(greyIm)
+          for i in range(len(img)):
+              for j in range(len(img[i])):
+                val = img[i][j]
+                tmp[val] = float(tmp[val] + 1)
+                k =  float(k + 1)
+          for i in range(len(tmp)):
+            tmp[i] = float(tmp[i] / k)
+          tmp = np.array(tmp)
+          for i in range(len(tmp)):
+            if(tmp[i] == 0):
+                res=res
+            else:
+                res=float(res - tmp[i] * (math.log(tmp[i]) / math.log(2.0)))
+          res1.append(res)
+        return res1
 
     def get_targets(self, points, gt_bboxes_list, gt_labels_list):
         """Compute regression, classification and centerness targets for points
@@ -286,7 +610,9 @@ class FCOSHead(AnchorFreeHead):
                     level.
         """
         assert len(points) == len(self.regress_ranges)
+        # print(points[0]) 
         num_levels = len(points)
+        # print(num_levels) #==5
         # expand regress ranges to align with points
         expanded_regress_ranges = [
             points[i].new_tensor(self.regress_ranges[i])[None].expand_as(
@@ -338,7 +664,7 @@ class FCOSHead(AnchorFreeHead):
                    gt_bboxes.new_zeros((num_points, 4))
 
         areas = (gt_bboxes[:, 2] - gt_bboxes[:, 0]) * (
-            gt_bboxes[:, 3] - gt_bboxes[:, 1])
+                gt_bboxes[:, 3] - gt_bboxes[:, 1])
         # TODO: figure out why these two are different
         # areas = areas[None].expand(num_points, num_gts)
         areas = areas[None].repeat(num_points, 1)
@@ -397,15 +723,15 @@ class FCOSHead(AnchorFreeHead):
         # condition2: limit the regression range for each location
         max_regress_distance = bbox_targets.max(-1)[0]
         inside_regress_range = (
-            (max_regress_distance >= regress_ranges[..., 0])
-            & (max_regress_distance <= regress_ranges[..., 1]))
+                (max_regress_distance >= regress_ranges[..., 0])
+                & (max_regress_distance <= regress_ranges[..., 1]))
 
         # if there are still more than one objects for a location,
         # we choose the one with minimal area
         areas[inside_gt_bbox_mask == 0] = INF
         areas[inside_regress_range == 0] = INF
         min_area, min_area_inds = areas.min(dim=1)
-
+        
         labels = gt_labels[min_area_inds]
         labels[min_area == INF] = self.num_classes  # set as BG
         bbox_targets = bbox_targets[range(num_points), min_area_inds]
@@ -429,8 +755,8 @@ class FCOSHead(AnchorFreeHead):
             centerness_targets = left_right[..., 0]
         else:
             centerness_targets = (
-                left_right.min(dim=-1)[0] / left_right.max(dim=-1)[0]) * (
-                    top_bottom.min(dim=-1)[0] / top_bottom.max(dim=-1)[0])
+                                         left_right.min(dim=-1)[0] / left_right.max(dim=-1)[0]) * (
+                                         top_bottom.min(dim=-1)[0] / top_bottom.max(dim=-1)[0])
         return torch.sqrt(centerness_targets)
 
     def _get_points_single(self,
@@ -453,3 +779,59 @@ class FCOSHead(AnchorFreeHead):
         points = torch.stack((x.reshape(-1) * stride, y.reshape(-1) * stride),
                              dim=-1) + stride // 2
         return points
+
+    def loss_features(self, weights, feature_target):
+        loss = []
+        loss1 = []
+        s = 0
+        s1 = 0
+        #print((weights[0].shape)[0])
+        for i in range(len(weights)):
+            for j in range((weights[0].shape)[0]):
+                #print(((weights[i])[j])[0].shape,(feature_target[i])[j].shape)
+                out_put = F.cosine_similarity(((weights[i])[j])[0], (feature_target[i])[j], dim=-1)
+                out_put = torch.mean(out_put)
+                loss.append(abs(out_put))
+                #loss1.append(abs(out_put1))
+        for i in range(len(loss)):
+            s = s + loss[i]
+        s = s / len(loss)
+        s = (1-s)*5
+        weights.clear()
+        return s
+
+    def loss_features1(self,weights, feature_target):
+      ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
+      s=0
+      for i in range(len(weights)):
+            for j in range((weights[0].shape)[0]):
+                (feature_target[i])[j]=torch.unsqueeze((feature_target[i])[j],dim=0)
+                b = torch.unsqueeze((weights[i])[j],dim=0)
+                #print(b.shape)
+                #(weights[i])[j] = b
+
+
+      for i in range(len(weights)):
+            for j in range((weights[0].shape)[0]):
+                (feature_target[i])[j]=torch.unsqueeze((feature_target[i])[j],dim=0)
+
+      for i in range(len(weights)):
+        for j in range((weights[0].shape)[0]):
+            b = torch.unsqueeze((weights[i])[j],dim=0)
+            ssim1 = ssim(b,(feature_target[i])[j])
+            print(ssim1)
+      weights.clear()
+
+
+def IOU(box1, box2):
+    
+    in_h = min(box1[2], box2[2]) - max(box1[0], box2[0])
+    in_w = min(box1[3], box2[3]) - max(box1[1], box2[1])
+
+    
+    inter = 0 if in_h < 0 or in_w < 0 else in_h * in_w
+    union = (box1[2] - box1[0]) * (box1[3] - box1[1]) + \
+            (box2[2] - box2[0]) * (box2[3] - box2[1]) - inter
+    
+    iou = inter / (union + np.exp(-10))
+    return iou
