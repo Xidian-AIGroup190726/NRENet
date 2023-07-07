@@ -179,7 +179,7 @@ class FCOSHead(AnchorFreeHead):
                 centernesses (list[Tensor]): centerness for each scale level, \
                     each is a 4D-tensor, the channel number is num_points * 1.
         """
-        #print(feats.shape)
+        
         return multi_apply(self.forward_single, feats, self.scales,
                            self.strides)
 
@@ -198,9 +198,7 @@ class FCOSHead(AnchorFreeHead):
             tuple: scores for each class, bbox predictions and centerness \
                 predictions of input feature maps.
         """
-        # print("shape:",x.shape)#torch.Size([8, 256, 52, 64])
-        # print("done",(x.shape)[0])
-        #print("before:",len(weights))
+        
         if len(weights)>=5:
             weights.clear()
         if len(iters)%455 == 0 and len(iters)!=0 and len(ap)==0:
@@ -208,10 +206,9 @@ class FCOSHead(AnchorFreeHead):
         ap.append(0)
         if len(ap)>=5:
           ap.clear()
-        #print("epoch:",len(epoch),len(iters),len(ap))
-        #print("x",x[0][255])
+    
         
-        if len(epoch)%2==0:# or len(epoch)>=51 and len(iters)%102!=0:
+        if len(epoch)%2==0:
           wmap = self.conv_features(x)
           weight = torch.sigmoid(wmap)
           weights.append(weight)
@@ -220,7 +217,7 @@ class FCOSHead(AnchorFreeHead):
         #print("weightss",weight[7])
         #print("xg",x[0][255])
         cls_score, bbox_pred, cls_feat, reg_feat = super().forward_single(x)
-        # print(cls_feat.shape)
+        
         if self.centerness_on_reg:
             centerness = self.conv_centerness(reg_feat)
         else:
@@ -272,7 +269,7 @@ class FCOSHead(AnchorFreeHead):
         """
         assert len(cls_scores) == len(bbox_preds) == len(centernesses)
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
-        #print(featmap_sizes)
+        
         all_level_points = self.prior_generator.grid_priors(
             featmap_sizes,
             dtype=bbox_preds[0].dtype,
@@ -334,10 +331,8 @@ class FCOSHead(AnchorFreeHead):
         iters.append(0)
         if len(epoch)%2 == 0:# or len(epoch)>=51:
           feature_target = self.feature_map_target(featmap_sizes, gt_bboxes, all_level_points, img_shapes,res)
-          print("weights:",(weights[3])[0])
-          print("target:",(feature_target[3])[0])
           feature_loss = self.loss_features(weights, feature_target)
-          #print(feature_loss)
+          
         weights.clear()
         num_imgs = cls_scores[0].size(0)
         
@@ -402,7 +397,7 @@ class FCOSHead(AnchorFreeHead):
         if len(epoch)%2 == 0:
           loss_sum = 0.8*loss_cls + 0.8*loss_bbox + 0.2*feature_loss + 0.2*loss_centerness
           loss_s.append(loss_sum)
-          #print("loss_sum:",loss_sum)
+          
           loss10q = []
           loss10h = []
           a = 10
@@ -419,12 +414,11 @@ class FCOSHead(AnchorFreeHead):
               for i in range(a):
                 loss10h.append(loss_s[-i-1])
               loss10q.append(loss_s[0])
-            print("q:",min(loss10q))
-            print("h:",min(loss10h))
+            
             if len(r1)==0:
               self.x[0][0] = random.uniform(self.bound[0][0], self.bound[1][0])
               self.v[0][0] = random.uniform(self.v_low, self.v_high)
-              self.p_best[0] = self.x[0]  # 储存最优的个体
+              self.p_best[0] = self.x[0]  
               self.g_best = self.p_best[0]
             
             for gen in range(self.time):
@@ -471,7 +465,6 @@ class FCOSHead(AnchorFreeHead):
             loss_bbox=loss_bbox,
             loss_centerness=loss_centerness)
 
-    #def interval_confirmation(self):
 
     def update(self, size):
         c1 = 2.0  
