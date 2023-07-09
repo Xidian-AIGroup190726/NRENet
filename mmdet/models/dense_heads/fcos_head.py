@@ -214,8 +214,6 @@ class FCOSHead(AnchorFreeHead):
           weights.append(weight)
           for i in range((x.shape)[0]):
              x[i].data *=weight[i]
-        #print("weightss",weight[7])
-        #print("xg",x[0][255])
         cls_score, bbox_pred, cls_feat, reg_feat = super().forward_single(x)
         
         if self.centerness_on_reg:
