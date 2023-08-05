@@ -213,31 +213,16 @@ class FCOSHead(AnchorFreeHead):
         ap.append(0)
         if len(ap)>=5:
           ap.clear()
-        #print("epoch:",len(epoch),len(iters),len(ap))
-        #print("x",x[0][255])
-        #savepath = r'/media/ExtDisk/yxt/ture map/'
-        #self.draw_features(8, 8, x[0][255].cpu().detach().numpy(), "{}/f1_conv1.png".format(savepath))
-        if len(epoch)%2==0:# or len(epoch)==1:# or len(epoch)>=51 and len(iters)%102!=0:
+        
+        if len(epoch)%2==0:
           wmap = self.conv_features(x)
           weight = torch.sigmoid(wmap)
           weights.append(weight)
           for i in range((x.shape)[0]):
              x[i].data *=weight[i]
-        ##########
-          #print("weightSSS:",len(weights),weight.shape)
-          #print("weight",weight[0])
-        #########
-        #if (0<len(iters)<=4000000  ) and len(ap)==1:
-         # num.append(x)
-          #print(num[-1].shape)
-        
-         
-        
-        
-        #print("weightss",weight[7])
+       
         cls_score, bbox_pred, cls_feat, reg_feat = super().forward_single(x)
-        #if len(ap)==3:
-         # print("cls:",cls_score[0].sigmoid())
+        
         if self.centerness_on_reg:
             centerness = self.conv_centerness(reg_feat)
         else:
@@ -287,13 +272,7 @@ class FCOSHead(AnchorFreeHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        # for i in range(len(weights)):
-        # print("weight:",weights[i].shape)
-        # weights is a list of 5 
-        # print("done")
-        # print(weights[0].shape)#torch.Size([8, 1, 60, 64])
-        #for i in range(len(weights)):
-          #print("weight:",weights[i].shape,len(weights))
+       
         assert len(cls_scores) == len(bbox_preds) == len(centernesses)
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
         #print(featmap_sizes)
@@ -301,21 +280,11 @@ class FCOSHead(AnchorFreeHead):
             featmap_sizes,
             dtype=bbox_preds[0].dtype,
             device=bbox_preds[0].device)
-        #print((all_level_points[0]))
+        
         labels, bbox_targets = self.get_targets(all_level_points, gt_bboxes,
                                                 gt_labels)
 
-        
-        #target1 = F.one_hot(labels[3], num_classes=2)
-        
-        #print("target1:",target1)
-        #u=0
-        #for i in range(len(target1)):
-         #   if target1[i]>0:
-          #      u=u+1
-        #print("tar:",len(target1),u)
-
-        # print(len(img_metas),((img_metas[7])['img_shape'])[0])
+    
         img_shapes = []
         for i in range(len(img_metas)):
             img_shapes.append((img_metas[i])['img_shape'])
@@ -326,68 +295,16 @@ class FCOSHead(AnchorFreeHead):
         res = self.cal_res(name)# caculate shang
         i=0
         flag=0
-        #print("iters:",len(iters))
+       
         pos_=0
         neg_=0
-        if 10000000<len(iters)<=100000000:
-          for j in range(8):
-            if res[j]>6:
-              flag+=1
-              while i<=255:
-                b=((num[-1][j][i]).cpu()).detach().numpy()
-                #print(i,b.sum(),name[j],b)
-                if b.sum()>=0:
-                  pos_+=1
-                else:
-                  neg_+=1
-                #plt.matshow(b,cmap=plt.cm.Reds)
-                #plt.title(name[j])
-                #plt.savefig('/media/ExtDisk/yxt/map/ma/'+str(i))
-                i+=1
-                #print("pg:",pos_,neg_,pos_/(neg_+0.000000001))
-            if flag!=0:
-              print(name[j])
-              break
-        #print("pgg:",pos_,neg_,pos_/(neg_+0.000000001))
-        i=0
-        flag=0
-        if 102999<len(iters)<=103004:
-          for j in range(8):
-            if res[j]>6:
-              flag+=1
-              while i<=255:
-                b=((num[-1][j][i]).cpu()).detach().numpy()
-                print(i,b.sum(),name[j],b)
-                plt.matshow(b,cmap=plt.cm.Reds)
-                plt.title(name[j])
-                plt.savefig('/media/ExtDisk/yxt/map/map_3/'+str(i))
-                i+=1
-            if flag!=0:
-              break
-
-        i=0
-        flag=0
-        
-        if 105300<len(iters)<=105306:
-          for j in range(8):
-            if res[j]>6:
-              flag+=1
-              while i<=255:
-                b=((num[-1][j][i]).cpu()).detach().numpy()
-                print(i,b.sum(),name[j],b)
-                plt.matshow(b,cmap=plt.cm.Reds)
-                plt.title(name[j])
-                plt.savefig('/media/ExtDisk/yxt/map/map_5/'+str(i))
-                i+=1
-            if flag!=0:
-              break
         
         area_s = []
         WH = []
         for k in range(len(gt_bboxes)):
             mian = []
             wh=[]
-            #print(len(gt_bboxes[k]))
+           
             for h in range(len(gt_bboxes[k])):
                 wh.append(max(((gt_bboxes[k][h])[2]-(gt_bboxes[k][h])[0])/2,((gt_bboxes[k][h])[3]-(gt_bboxes[k][h])[1]))/2)
                 mian.append(((gt_bboxes[k][h])[2]-(gt_bboxes[k][h])[0])*((gt_bboxes[k][h])[3]-(gt_bboxes[k][h])[1]))
@@ -419,25 +336,18 @@ class FCOSHead(AnchorFreeHead):
           Rmax = rsumax/len(rmax)
         else:
             Rmax=0
-        #print(name)
-        ####print(Rmin,Rmax)
+        
         low = [Rmin]
         up = [Rmax]
         self.bound.append(low)
         self.bound.append(up)
 
-        #res = self.cal_res(name)
-        #print(res)
+        
         iters.append(0)
         if len(epoch)%2 == 0:#or len(epoch)==1:# or len(epoch)>=51:
 
           feature_target = self.feature_map_target(featmap_sizes, gt_bboxes, all_level_points, img_shapes,res)
-          #for j in range(8):
-          
-
-          #print("weights:",(weights[3])[0])
-          #print("target:",(feature_target[2])[0])
-
+        
           feature_loss = self.loss_features(weights, feature_target)
         
           
@@ -445,8 +355,7 @@ class FCOSHead(AnchorFreeHead):
 
           
         weights.clear()
-        # print(len(gt_bboxes),gt_bboxes[7])
-        # gt_bboxes is a list of 8 images' bbox lists
+        
         num_imgs = cls_scores[0].size(0)
         # flatten cls_scores, bbox_preds and centerness
         flatten_cls_scores = [
@@ -515,14 +424,13 @@ class FCOSHead(AnchorFreeHead):
         if len(epoch)%2== 0:# or len(epoch)==1:
           loss_sum = 0.8*loss_cls + 0.8*loss_bbox + 0.2*feature_loss + 0.2*loss_centerness
           loss_s.append(loss_sum)
-          #print("loss_sum:",loss_sum)
+          
           loss10q = []
           loss10h = []#10 600
           a = 10
-          ##ssdd 612 hrsid 2730
+          
           if (len(r)%a==0 or len(r)==0) and len(r)<2730:
-          #loss_sum = 0.4*loss_cls + 0.4*loss_bbox + 0.1*feature_loss + 0.1*loss_centerness
-          #loss_s.append(loss_sum)
+          
             if len(r)==0:
               loss10q.append(loss_s[0])
               loss10h.append(loss_s[0])
@@ -537,10 +445,7 @@ class FCOSHead(AnchorFreeHead):
             print("q:",min(loss10q))
             print("h:",min(loss10h))
 
-            #self.x[0][0] = random.uniform(self.bound[0][0], self.bound[1][0])
-            #self.v[0][0] = random.uniform(self.v_low, self.v_high)
-            #self.p_best[0] = self.x[0]  # 储存最优的个体
-            #heyibufenxiedao loss nali
+            
             # 做出修改
             if len(r1)==0:
               self.x[0][0] = random.uniform(self.bound[0][0], self.bound[1][0])
@@ -560,15 +465,10 @@ class FCOSHead(AnchorFreeHead):
                     (self.p_best[0]) = x_iter[-2]
                 else:
                     (self.p_best[0]) = x_iter[-3]
-            #self.p_best[0] = self.x[0]
-            #self.p_best[i] = self.x[i]
-            #ms.append((self.p_best[-1])[0])
-            ##print(self.p_best)
+           
             
             LOSS.append([min(loss10h),ms[-1]])
-            #ms.append((self.p_best[0])[0])
             ms.append(self.x[0][0])
-            ####print("LOSS:",LOSS,ms)
             a=[]
             for i in range(len(LOSS)):
               a.append(LOSS[i][0])
@@ -576,7 +476,7 @@ class FCOSHead(AnchorFreeHead):
             self.g_best = LOSS[index_min][1]
             r1.append(0)
           r.append(0)
-          ####612 2730
+          
         if len(r)==2730:
           a=[]
           for i in range(len(LOSS)):
@@ -584,7 +484,7 @@ class FCOSHead(AnchorFreeHead):
           index_min = a.index(min(a))
           self.g_best = LOSS[index_min][1]
           ms.append(self.g_best)
-        ##print("ms:",len(r),ms[-1])
+       
         if len(epoch)%2 == 0:# or len(epoch)==1:# or len(epoch)>=51:
             return dict(
             loss_cls=loss_cls,
@@ -597,7 +497,7 @@ class FCOSHead(AnchorFreeHead):
             loss_bbox=loss_bbox,
             loss_centerness=loss_centerness)
 
-    #def interval_confirmation(self):
+    
 
     def update(self, size):
         c1 = 2.0  # 学习因子
@@ -641,7 +541,7 @@ class FCOSHead(AnchorFreeHead):
         img = img.astype(np.uint8)  # 转成unit8
         img = cv2.applyColorMap(img, cv2.COLORMAP_JET)  # 生成heat map
         img = img[:, :, ::-1]  # 注意cv2（BGR）和matplotlib(RGB)通道是相反的
-        #plt.imshow(img)
+        
         print("{}/{}".format(i, width * height))
       fig.savefig(savename, dpi=100)
       fig.clf()
@@ -659,10 +559,10 @@ class FCOSHead(AnchorFreeHead):
                 p = -1
                 small = 0
                 for e in range(len(small_target[j])):
-                  #print(small_target[j][e])
+                  
                   if small_target[j][e]<=1024:
                     small+=1
-                  #print(small)
+                 
                 
                 if res[j]>=6:# or small!=0:
                   if i==0:
@@ -678,7 +578,7 @@ class FCOSHead(AnchorFreeHead):
                          p = p + 1
                          locations = (all_level_points[i])[p]
                          sizes = (img_shapes[j][0], img_shapes[j][1])  # 306,500
-                         #print("loca:",locations)
+                         
                          xl_yl = locations - (stride1[i] / 2)
                          xr_yr = locations + (stride1[i] / 2)
                          box1 = [xl_yl[0], xl_yl[1], xr_yr[0], xr_yr[1]]
@@ -695,7 +595,7 @@ class FCOSHead(AnchorFreeHead):
                            xr = box2[2]+m if (box2[2]+m)<=sizes[1]-1 else sizes[1]-1
                            yr = box2[3]+m if (box2[3]+m)<=sizes[0]-1 else sizes[0]-1
                            box22 = [xl,yl,xr,yr]
-                          #print("box22:",box22)
+                          
                            
                            if i == 0 and range_box<=64:
                              if IOU(box1, box22) != 0:
@@ -807,9 +707,9 @@ class FCOSHead(AnchorFreeHead):
                     level.
         """
         assert len(points) == len(self.regress_ranges)
-        # print(points[0]) 
+        
         num_levels = len(points)
-        # print(num_levels) #==5
+        
         # expand regress ranges to align with points
         expanded_regress_ranges = [
             points[i].new_tensor(self.regress_ranges[i])[None].expand_as(
@@ -830,7 +730,7 @@ class FCOSHead(AnchorFreeHead):
             points=concat_points,
             regress_ranges=concat_regress_ranges,
             num_points_per_lvl=num_points)
-        #print("label:",labels_list)
+        
         # split to per img, per level
         labels_list = [labels.split(num_points, 0) for labels in labels_list]
         #print("lllll:",labels_list)
@@ -1010,8 +910,7 @@ class FCOSHead(AnchorFreeHead):
             for j in range((weights[0].shape)[0]):
                 (feature_target[i])[j]=torch.unsqueeze((feature_target[i])[j],dim=0)
                 b = torch.unsqueeze((weights[i])[j],dim=0)
-                #print(b.shape)
-                #(weights[i])[j] = b
+               
 
 
       for i in range(len(weights)):
