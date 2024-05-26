@@ -14,14 +14,14 @@ The following are the data sets we use in the network and links to data set usag
 # SSDD:
 paper: Zhang T, Zhang X, Li J, et al. SAR ship detection dataset (SSDD): Official release and comprehensive data analysis[J]. Remote Sensing, 2021, 13(18): 3690.
 
-link: https://github.com/TianwenZhang0825/Official-SSDD
+download link: https://github.com/TianwenZhang0825/Official-SSDD
 
 DOI: 10.3390/rs13183690
 
 # HRSID:
-paper: Wei S, Zeng X, Qu Q, et al. HRSID: A high-resolution SAR images dataset for ship detection and instance segmentation[J]. Ieee Access, 2020, 8: 120234-120254.
+paper: Wei S, Zeng X, Qu Q, et al. HRSID: A high-resolution SAR images dataset for ship detection and instance segmentation[J]. Ieee Access, 2020, 8: 120234-120254.
 
-link: : https://github.com/chaozhong2010/HRSID
+download link:  https://github.com/chaozhong2010/HRSID
 
 DOI: 10.1109/ACCESS.2020.3005861
 
@@ -29,6 +29,6 @@ DOI: 10.1109/ACCESS.2020.3005861
 paper:  Wang Y, Wang C, Zhang H, et al. A SAR dataset of ship detection for deep learning under
 complex backgrounds[J]. remote sensing, 2019, 11(7): 765.
 
-link:  https://radars.ac.cn/web/data/getData?dataType=SARGroundObjectsTypes
+download link:  https://radars.ac.cn/web/data/getData?dataType=SARGroundObjectsTypes
 
 DOI: 10.3390/rs11070765
